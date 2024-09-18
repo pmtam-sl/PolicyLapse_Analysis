@@ -21,9 +21,10 @@ This project aims to explore factors contributing to policy lapses and predict t
 ## Repository Structure
 
 - `data/`: Contains the datasets used for the analysis.
-- `code.rmd/`: Includes R scripts for each part of the analysis.
-  - `logistic_regression.R`: Code for logistic regression analysis.
-  - `eda_policy_lapse.R`: Code for exploratory data analysis.
-  - `tidymode_prediction.R`: Code for building predictive models using TidyMode.
+- `code.rmd/`: Includes RMarkdown scripts for each part of the analysis.
+  - `PolicyLapse_LR.Rmd`: Rmd for logistic regression analysis.
+  - `PolicyLapse_EDA.Rmd`: Rmd for Exploratory Data Analysis.
+  - `PolicyLapse_Prediction.Rmd`: Code for building predictive models using TidyMode.
+- `reports/`: Includes HTML generated reports for each part of the analysis
 - `README.md`: This file.
 
