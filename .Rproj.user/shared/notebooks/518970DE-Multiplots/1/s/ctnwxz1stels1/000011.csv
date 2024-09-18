@@ -1,0 +1,4 @@
+"0","ggpubr::ggarrange(p1, p2, p3, p4, cols=2)
+"
+"2","[38;5;251m`geom_smooth()` using method = 'loess' and formula = 'y ~ x'[39m"
+"2","Warning: Cannot convert object of class numeric into a grob."

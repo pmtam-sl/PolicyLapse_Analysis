@@ -1,0 +1,723 @@
+---
+title: "Deap EDA to Policy Lapse analysis"
+author: "Tam Pham"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: false
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE,
+                      message = FALSE, echo = TRUE, dpi = 180,
+                      fig.width = 9, fig.height = 5,
+                      digits = 3)
+
+library(tidyverse)
+library(flextable)
+
+
+```
+
+Inspiring by [Deep EDA Tips](https://youtu.be/Swcp0_l65lw) video by **yazaR-Data Science**, I would like to practice those tips for my Policy Lapse analysis.
+
+## Policy Data
+
+My Policy Lapse Data as below:
+
+```{r include=FALSE}
+#policy <-
+#readxl::read_xlsx("~/OneDrive/Learning/R for Data Science/Insurance_practices/data/PolicyLapse.xlsx")
+
+policy <-
+readxl::read_xlsx("../data/PolicyLapse.xlsx")
+
+policy <- 
+  policy %>%
+  janitor::remove_empty("cols") %>%
+#  select(!where(is.logical),-c("PaymentTerm0","DistributionChannel0","PolicyYear")) %>%
+  select(-c("ID","PaymentTerm0","DistributionChannel0","PolicyYear")) %>%
+  mutate_if(is.character,factor) %>%
+  mutate(Lapsed = fct_rev(Lapsed))
+```
+
+**Summary policy data:**
+
+```{r skim, echo=FALSE}
+library(skimr)
+my_skim <- skim_with(factor=sfl(pct = ~{
+      prt <- sort(prop.table(table(.)), decreasing = TRUE)
+      val <- sprintf("%.2f", prt)
+      nm1 <- substr(names(prt), 1, 3)
+      stringr::str_c(nm1, val, sep = ": ", collapse = ", ")
+      })
+)
+my_skim(policy)
+```
+
+<!-- ## Create Automated Reported with Only One Function -->
+Plot summary of all variables with `DataExplorer`
+
+```{r}
+library(DataExplorer)
+plot_intro(policy)
+```
+
+## Summary tools{.tabset}
+
+### {summarytools}
+
+**summarytools** library provides quick overview about the whole dataset.
+
+```{r}
+library(summarytools)
+dfSummary(policy)
+```
+
+### {gtsummary}
+
+**gtsummary:** creates a Presentation-Ready Data Summary and Analytic Result Tables
+
+```{r}
+library(gtsummary)
+
+mtcars %>%
+  select(mpg, hp, am, gear, cyl) %>%
+  tbl_summary(by = am) %>%
+  add_p()
+```
+
+-   numeric variables are used non-parametric Wilcoxon rank sum test for comparing two groups.
+-   categorical variables are checked with Fisher's exact test if number of observations are small (such as observations in any of the group is below 5)
+
+```{r}
+ISLR::Wage %>%
+  select(age, wage, education, jobclass) %>%
+  tbl_summary(by=education) %>%
+  add_p()
+```
+
+-   The non-parametric Kruskall- Wallis rank sum test is used for test numeric variables for more than two groups.
+-   Pearson chi-square test is used to check categorical variable with more data
+
+```{r}
+policy %>%
+  select(Lapsed, starts_with("PO"), starts_with("Num"),Occupation, PaymentTerm, Premium) %>%
+  tbl_summary(by = Lapsed,
+              statistic = list(all_continuous() ~ "{mean} ({sd})",
+                               all_categorical() ~ "{p}% ({n} / {N})")
+  ) %>%
+  add_p()
+   
+policy %>%
+  tbl_summary(by = Lapsed) %>%
+  add_p()
+```
+
+## Explore Categorical Variables with Fisher's and Chi-Square
+### DataExplorer
+
+Plot categorical variable with `DataExplorer`
+
+```{r}
+plot_bar(policy)
+plot_bar(policy, by="Lapsed")
+```
+
+### SmartEDA {.tabset}
+#### ExpCatViz()
+
+```{r}
+library(SmartEDA)
+library("viridis")
+ExpCatViz(
+  policy %>%
+    select(Lapsed,Occupation) %>%
+    filter(Lapsed == "Lapsed"),
+  target = "Lapsed",
+ col=hcl.colors(1, "Dark2"),
+)
+
+ExpCatViz(
+  policy %>%
+    select(Lapsed,Occupation) ,
+  target = "Lapsed",
+ # col=hcl.colors(2, "Dark2", alpha = 0.8)
+  # col = rainbow(2, alpha = 0.7)
+ col = viridis(2, alpha = 0.7)
+# col=hcl.colors(2, "viridis", alpha = 0.8)
+)
+```
+
+#### ExpCatStat()
+
+`ExpCatStat()` function provides summary statistics for all character or categorical columns in the dataframe.
+
+```{r}
+ExpCatStat(policy,
+           Target = "Lapsed") %>%
+  flextable()
+```
+
+-   *Chi-squared:* χ2
+
+-   *p-value:* : with p-value \<.05, we reject the null hypothesis and accept that two variables are relates each other. We then select those variavle as predictors in prediction.
+
+-   *IV Value:* Information Value helps determine which columns in a data set have predictive power or influence on the value of a specified dependent variable.
+
+-   *Cramers V* : [Cramers V](https://www.statology.org/interpret-cramers-v/) is a measure of the strength of association between two nominal variables.
+
+-   *Predictive Power* :
+
+### {ggstatsplot}
+
+Visualization with statistic with [ggstatsplot](https://indrajeetpatil.github.io/ggstatsplot/)
+
+-   It counts and calculates percentages for every category.
+-   It visualizes the frequency table in the form of stacked bars and provides the statistical details including: p-value in addition to visualization which allows us to make a conclusion or inference
+
+```{r}
+library(ggstatsplot)
+policy %>%
+  ggbarstats(x= Lapsed, y = DistributionChannel,
+             label = "both")
+```
+
+## Explore Numeric Variables with Descriptive Statistic
+
+### {dlookr}
+
+```{r }
+library(dlookr)
+library(flextable)
+options(digits = 3)
+dlookr::describe(policy) %>%
+  flextable()
+```
+
+We can add Classification group or control & treatment
+
+```{r}
+policy %>%
+  group_by(Lapsed) %>%
+  dlookr::univar_numeric()
+```
+
+`dianose_numeric()` function report the usual five number summary which is actually box-plot form, and number of zeros, negative values and outliers:
+
+```{r}
+policy %>%
+  diagnose_numeric() %>%
+  flextable()
+```
+
+### {SmartEDA}
+
+`SmartEDA` for numeric variable with `ExpNumStart()` function provides the richest and most comprehensive descriptive statistic table. We can display whole variables, grouped variables or even both.
+
+```{r}
+# Summary statistic for All
+ExpNumStat(policy, by ="A") %>% 
+  flextable()
+
+# Group summary statistic by "gp"
+ExpNumStat(policy, by ="G", gp = "Lapsed") %>%
+  flextable()
+
+# Both Summary and Group
+ExpNumStat(policy, by ="GA", gp = "Lapsed", Outlier = TRUE,
+           Qnt = c(.25,.75), round = 2) %>%
+  flextable()
+```
+
+
+## Explore distribution with Skewness and Kurtosis test
+
+Many statistical tests depend on symmetric and normally distributed data
+
+### {DataExplorer}
+
+```{r}
+library(DataExplorer)
+library(ISLR) # for Wage dataset
+plot_histogram(Wage)
+
+plot_density(Wage)
+```
+
+Histogram and density plots allow us the first claims on the data.
+
+```{r}
+policy %>% select(-starts_with("Num")) %>%
+  plot_histogram()
+
+policy %>% select(-starts_with("Num")) %>%
+  plot_density()
+```
+
+### Skewness and Kurtosis
+
+The symmetry can be described by Skewness and Kurtosis measures:
+
+-   **Skewness** tells us whether the distribution is symmetric or not. it also provide if
+
+    -   it's skewed to the left (skewness \<0), or
+    -   it's skewed to the right (skewness \>0)
+
+-   **Kurtosis** tells us how far the outliers and heavy tail of distribution <br>
+
+    <center>
+
+```{r out.width="70%", fig.pos="c", echo=FALSE}
+#knitr::include_graphics("~/OneDrive/Learning/R for Data Science/Insurance_practices/img/Skewness_Kurtosis.jpg")
+
+knitr::include_graphics("../img/Skewness_Kurtosis.jpg")
+```
+
+</center>
+
+<br>
+
+```{r}
+airquality %>%
+  select(Ozone, Wind) %>%
+  plot_density()
+
+skewness(airquality$Ozone, na.rm = T)
+skewness(airquality$Wind, na.rm = T)
+```
+
+-   The skewness of Ozone distribution equals `r`skewness(airquality\$Ozone, na.rm = T)\` - FAR AWAY FROM ZERO, suggests Ozone is not Normally distributed.
+
+-   The skewness of Wind distribution equals `r`skewness(airquality\$Wind, na.rm = T)\` - *IS THIS FAR FAR ENOUGH FROM ZERO ???*
+
+We will run the *D'Agostino skewness* test from `moments` library as below
+
+```{r}
+library(moments)
+agostino.test(airquality$Ozone)
+```
+
+The p-value for Ozone is very small which *reject the null hypothesis* about *not skewed data*. Saying that all zone data is actually **significant skewed** or ***NOT NORMALLY DISTRIBUTED!***.
+
+```{r}
+agostino.test(airquality$Wind)
+```
+
+The p-value for Wind is above the usual significant threshold (\>.05) which *canot reject the null hypothesis* as *not skewed data*. Means that we can treat Wind data as **not skewed** and therefor ***NORMALLY DISTRIBUTED***.
+
+#### Kurtosis
+
+The Kurtosis is the measure of heavy tails or outliers present in the distribution.
+
+The Kurtosis value for a normal distribution is around 3.
+
+The *Anscombe-Glynn* `anscombe.test()` provides statistical test for whehter kurtosis around 3.
+
+```{r}
+anscombe.test(airquality$Ozone)
+anscombe.test(airquality$Wind)
+```
+
+-   The kurtosis for Ozone is 4.1 with p-value (<.05) which is significant far away from 3, indicating that ***NOT NORMALLY DISTRIBUTED & PROBABLE PRESENCE OF OUTLIERS***
+
+-   The kurtosis for Win is around 3 but p-value(>.05) tell us that Wind distribution is ***NORMALLY DISTRIBUTED ! NO OUTLIERS.***
+
+## Explore Normality with QQ-Plots and Shapiro-Wilk.
+
+The normality check helps us to determine a correct statistical test:
+
+| Data                     | Test            | For 2 Groups | For \> 2 Groups |
+|--------------------------|-----------------|--------------|-----------------|
+| Normally Distributed     | Parametric Test | T-Test       | ANOVA           |
+| Not Normally Distributed | Non-Parametric  | Mann-Whitney | Krusal-Wallis   |
+
+Checking the normality using QQ-Plots and Shapiro-Wilk
+
+### {DataExplorer}
+
+```{r}
+plot_qq(iris)
+
+plot_qq(iris, by = "Species")
+```
+
+```{r}
+policy %>%
+  select(PO_Age,INS_Age, Premium) %>%
+  plot_qq()
+
+plot_qq(policy, by="Lapsed")
+```
+
+### {dlookr} visualization
+
+With `dlookr`, we not only view Q-Q plot but also histogram of the original and histograms of two most common transformation of data: log and sqrt transformation. It helps us to see whether transformation improves something or not
+
+```{r}
+iris %>%
+  group_by(Species) %>%
+  plot_normality(Petal.Length)
+```
+
+```{r}
+policy %>%
+  group_by(Lapsed) %>%
+  plot_normality(Premium)
+
+policy %>%
+  plot_normality(Premium)
+```
+
+The Q-Q plots can be interpreted : points are situated close to the diagonal line - the data is probably normally distributed.
+
+But how close is enough to conclude it's actually normally distributed.
+
+#### {ggqqplot}
+
+`ggqqplot` helps us to decide whether the deviation from normality is distributed.
+```{r}
+library(ggpubr)
+ggqqplot(iris, "Sepal.Length", facet.by = "Species")
+```
+
+```{r}
+ggqqplot(policy,"Premium", facet.by = "Lapsed")
+```
+
+#### {dloor} Shapiro-Wilk normality test
+
+```{r}
+agostino.test(airquality$Ozone) # Ozone is not normally distributed
+agostino.test(airquality$Wind) # Wind is normally distributed
+
+
+normality(airquality) %>%
+  mutate_if(is.numeric,~round(.,3)) %>%
+  flextable()
+```
+
+The `null-hypothesis` of this Shapiro-Wilk test is that the population is normally distributed: 
+ - If p value < alpha level, the null hypothesis is rejected and there is evidence that the data tested are not normally distributed.
+ - If p value > .05, then the null hypothesis (that the data came from a normally distributed population) can not be rejected.
+
+With p_value > .05, it shows that only Wind data is normally distributed.
+ 
+```{r}
+normality(policy) %>%
+  mutate_if(is.numeric,~round(.,3)) %>%
+  flextable()
+```
+
+With p_value <.05, all numeric data are not normally distributed.
+
+In conjunction with `group_by()`, we can check the normality check for subset of data
+
+```{r}
+diamonds %>%
+  group_by(cut,color,clarity) %>%
+  normality()
+```
+
+```{r}
+policy %>%
+  group_by(PO_Sex,Occupation) %>%
+  normality()
+```
+
+In summary, given enough data we can run Shapiro_Wilk test for normality - ignore Skewness and Visualizations
+
+Let's take a look for all of normality test below
+
+```{r}
+bla <- Wage %>%
+  filter(education =="1. < HS Grad") %>%
+  select(age)
+
+normality(bla) %>% flextable()
+shapiro.test(bla$age)
+
+plot_density(bla) # it looks like Bell-curve of normally distributed.
+# But if take a look to histogram plot
+plot_histogram(bla)
+
+agostino.test(bla$age) 
+
+anscombe.test(bla$age)
+
+ggqqplot(bla$age)
+```
+
+## Compare Groups via Box-PLots & Non-parametric test
+
+### {DataExplorer}
+
+```{r}
+plot_boxplot(iris, by="Species")
+```
+
+Then the question is "Do these groups differ significantly ?"
+
+### {ggstaplot}
+
+With `ggbetweenstats()` from `ggstaplot`, we can tell how different among groups
+
+```{r}
+ggbetweenstats(
+  data = iris,
+  x = Species,
+  y = Sepal.Length,
+  type = "np"
+)
+```
+
+With p_value which tells you whether they are significant differences between groups. They also conducts a correct multiple pairwise comparisons to see between which groups exactly differences are.
+
+## Explore Correlations with Different Methods
+
+### {dlookr} - Correlation
+
+```{r}
+correlate(airquality,Ozone)
+
+plot_correlate(airquality, method = "kendal")
+```
+
+`plot_correlate` for:
+- parametric : with PEARSON
+- non-parametric : KENDAL OR SPEARMAN
+
+```{r}
+correlate(policy,Premium)
+
+plot_correlate(policy)
+```
+
+### {ggstatsplot}
+
+Further to plot the correlation, we may need to test which correlations are actually significant, using `ggcormat()` function
+
+```{r}
+ggcorrmat(data=iris)
+```
+
+It can help to display the correlation coefficients, colored heatmap showing positive and negative correlations.
+
+```{r}
+## let's use just 5% of the data to speed it up
+ggcorrmat(
+  data = dplyr::sample_frac(ggplot2::diamonds, size = 0.05),
+  cor.vars = c(carat, depth:z), ## note how the variables are getting selected
+  cor.vars.names = c(
+    "carat",
+    "total depth",
+    "table",
+    "price",
+    "length (in mm)",
+    "width (in mm)",
+    "depth (in mm)"
+  ),
+  title = "Relationship between diamond attributes and price",
+  subtitle = "Dataset: Diamonds from ggplot2 package",
+  ggcorrplot.args = list(outline.color = "black", hc.order = TRUE)
+)
+```
+
+
+```{r}
+ggcorrmat(
+  data = policy,
+  title = "Relationship between Numeric variables",
+  subtitle = "Dataset: Policy Lapsed",
+)
+```
+
+If any particular correlation you want to view
+
+```{r}
+ggcorrmat(airquality)
+
+ggscatterstats(
+  data = airquality,
+  x = Ozone,
+  y = Temp,
+  type = "np" # try the "robust" correlation by using Spearman - as non-parametric
+)
+
+ggscatterstats(
+  data = airquality,
+  x = Ozone,
+  y = Temp
+)
+```
+
+```{r}
+ggscatterstats(
+  iris,
+  x = Sepal.Width,
+  y = Petal.Length,
+  label.var = Species,
+  label.expression = Sepal.Length > 7.6
+) +
+  ggplot2::geom_rug(sides = "b")
+```
+
+```{r}
+ggscatterstats(
+  data = policy,
+  x = Premium,
+  y = INS_Age,
+  type = "np" # try the "robust" correlation by using Spearman - as non-parametric
+)
+```
+
+### {PerformanceAnalytics}
+
+The below is not only display correlation coefficients but also histogram for every particular particular numeric variable and scatter plots for every combination, besides significant stars are particular useful as it describle strenght of correlation
+
+```{r}
+library(PerformanceAnalytics)
+chart.Correlation(iris %>%
+                    select(-Species),method = "kendall")
+```
+
+```{r}
+chart.Correlation(policy %>%
+                    select(Premium,INS_Age,PO_Age), method = "kendall")
+```
+
+### {dlookr} - linear models
+
+`compare_numeric()` function compute information to examine the relationship between numerical variables by pearson's correlation and simple linear models
+
+```{r}
+bla <- compare_numeric(iris)
+
+bla$correlation
+
+bla$linear %>%
+  mutate_if(is.numeric, ~round(.,2)) %>%
+  flextable()
+```
+
+We could plot all the results of `compare_numeric` function which would display the strength of the correlation with the circles, the spread of data with the box plots the linear regression itself.
+
+```{r}
+plot(bla)
+```
+
+```{r}
+plo <- compare_numeric(policy[,c("Premium","INS_Age","PO_Age")])
+
+plo$correlation
+
+plo$linear %>%
+  mutate_if(is.numeric, ~round(.,2)) %>%
+  flextable()
+
+plot(plo)
+```
+
+## Explore data with simple linear & non-linear models
+
+### Exploratory modeling
+
+```{r}
+library(ggplot2)
+ggplot(iris, aes(Sepal.Length,Sepal.Width))+
+  geom_point()+
+  geom_smooth()+
+  facet_wrap(~Species)
+```
+
+## Explore missing values
+
+### {dlookr}
+
+The `plot_na_intersect()` plots the combination variables that is include missing value
+
+```{r}
+plot_na_intersect(airquality)
+```
+
+2 missing variable : Ozone and Solar.2
+There 2 values intersect between 2 variables
+
+```{r}
+plot_na_intersect(policy)
+```
+
+`imputate_na`
+
+```{r}
+imputate_na(airquality,xvar=Ozone,yvar=Temp, method = 'knn') %>%
+  plot()
+```
+
+- xvar: the variable with missing value
+- yvar: the variable which will predict the missing value
+
+
+```{r}
+imputate_na(policy,NumOfEmails,Lapsed, method = "rpart") %>%
+  plot()
+```
+
+## Explore Outliers
+
+### {performance}
+
+`Check_outliers()` from `performance` library
+
+```{r}
+library(performance)
+plot(check_outliers(airquality$Wind))
+
+check_outliers(airquality$Wind, method = "iqr") %>%
+  plot()
+```
+
+### {dlookr}
+
+```{r}
+diagnose_outlier(diamonds) %>% flextable()
+```
+
+The `diagnose_outlier()` provides not only count outliers in variables and percentage, moreover, it averages the mean of outliers, mean of each variable with outliers and without outliers. 
+In this way, we can see how strong the influence of outliers for every variables.
+
+Such as with depth, there are 2,545 outliers but the average of depth are almost identical. But the outliers of price is heavily influence to the average of price
+
+```{r}
+diagnose_outlier(policy) %>% flextable()
+```
+
+```{r}
+airquality %>%
+  select(Ozone, Wind) %>%
+  plot_outlier()
+
+# Visualize variable with a ratio of outliers greater than 5
+
+plot_outlier(diamonds,
+             diamonds %>%
+               diagnose_outlier() %>%
+               filter(outliers_ratio >5) %>%
+               select(variables) %>%
+               pull())
+```
+
+### Impute outliers
+
+```{r}
+bla <- imputate_outlier(diamonds, carat, method = "capping")
+plot(bla)
+
+summary(bla)
+```
+

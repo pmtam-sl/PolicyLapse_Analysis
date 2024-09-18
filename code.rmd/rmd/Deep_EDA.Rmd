@@ -1,0 +1,445 @@
+---
+title: "Policy Lapse - EDA"
+author: "Tam Pham"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 2
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE,
+                      message = FALSE, echo = TRUE, dpi = 180,
+                      fig.width = 9, fig.height = 5,
+                      digits = 3)
+
+library(tidyverse)
+```
+
+Preventing Policy Lapse is one of key driver for successful insurance business. Proactive identify the likelihood of policy lapse will help business to take action before client churn and terminate their policy.
+
+In this tutorial, we will first explore policy data before processing lapse prediction steps.
+
+## Policy Data
+
+```{r include=FALSE}
+policy <-
+readxl::read_xlsx("~/OneDrive/Learning/R for Data Science/Insurance_practices/data/PolicyLapse.xlsx")
+
+policy <- 
+  policy %>%
+  janitor::remove_empty("cols") %>%
+#  select(!where(is.logical),-c("PaymentTerm0","DistributionChannel0","PolicyYear")) %>%
+  select(-c("PaymentTerm0","DistributionChannel0","PolicyYear")) %>%
+  mutate_if(is.character,factor) %>%
+  mutate(Lapsed = fct_rev(Lapsed))
+```
+
+**Summary policy data:**
+
+```{r skim, echo=FALSE}
+library(skimr)
+my_skim <- skim_with(factor=sfl(pct = ~{
+      prt <- sort(prop.table(table(.)), decreasing = TRUE)
+      val <- sprintf("%.2f", prt)
+      nm1 <- substr(names(prt), 1, 3)
+      stringr::str_c(nm1, val, sep = ": ", collapse = ", ")
+      })
+)
+my_skim(policy)
+```
+
+Overall, we can see:
+
+-   32% of policy is lapsed. And `Lapsed` is the outcome variable for our study.
+
+-   53% of policy owner are male, similar to 52% of insured person are male.
+
+-   14% of PO is also insured person.
+
+-   PO age range from 22 to 59 with average age 43.3. And the age of insured person range from 18-64 with average of 40.
+
+-   We also found some missing value in `NumOfClaims, NumOfEmails, NumOfCalls`, and `Phone_registered` information. However those are minor, we can ignore them when building models
+
+## Exploratory Data Analysis (EDA)
+
+### For Categorical variables {.tabset}
+
+#### Gender
+
+**Is the likelihood of lapse dependent on gender**
+
+```{r include=FALSE, eval=FALSE}
+d.policy <-
+policy %>%
+  filter(Lapsed == "Lapsed") %>%
+  select(where(is.factor))
+
+d.policy %>%
+  count(Lapsed,PO_Sex)
+```
+
+```{r echo=FALSE}
+gg.PO_Sex <-
+policy %>%
+  count(Lapsed,PO_Sex) %>%
+  group_by(PO_Sex) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  ggplot(aes(PO_Sex, percent, fill=PO_Sex)) +
+  geom_col(alpha = 0.7, show.legend = FALSE, position = "dodge") +
+  geom_text(aes(label=sprintf("%1.1f%%", 100*percent),vjust = 2)) +
+  labs(x="", title = "Lapsed by PO Gender") +
+  scale_y_continuous(labels = scales::percent_format(),
+                     limits = c(0,0.37))
+
+gg.INS_Sex <-
+policy %>%
+  count(Lapsed,INS_Sex) %>%
+  group_by(INS_Sex) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  ggplot(aes(INS_Sex, percent, fill=INS_Sex)) +
+  geom_col(alpha = 0.7, show.legend = FALSE, position = "dodge") +
+  geom_text(aes(label=sprintf("%1.1f%%", 100*percent),vjust = 2)) +
+  labs(x="", title = "Lapsed by INS Gender") +
+  scale_y_continuous(labels = scales::percent_format(),
+                     limits = c(0,0.37))
+
+ggpubr::ggarrange(gg.PO_Sex,gg.INS_Sex,
+                  ncol = 2, nrow = 1) 
+```
+
+-   Policy with female Policy Owner (PO) are most likely to lapsed with a ratio of 34%, higher than male PO with ratio of 31%.
+
+-   However, the lapse rate by Insured person is contrary.
+
+```{r include=FALSE, echo=FALSE}
+# Kiem tra them
+table(policy$Lapsed,policy$PO_Sex,
+      dnn=c("Lapsed","PO_Sex")) %>%
+  prop.table(2) %>% 
+  as.data.frame() %>%
+  filter(Lapsed =="TRUE") %>% 
+  ggplot(aes(x=PO_Sex,y=Freq,fill=PO_Sex)) + geom_col()
+```
+
+#### Occupation
+
+**Could it be the Occupation Class correlated with the probability of Lapse**
+
+```{r echo=FALSE}
+policy %>%
+  count(Lapsed, Occupation) %>%
+  group_by(Occupation) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  ggplot(aes(x=Occupation, y=percent, fill=Occupation)) +
+  geom_col(alpha = 0.7, show.legend = FALSE, position = "dodge") +
+  geom_text(aes(label=sprintf("%1.1f%%", 100*percent),vjust = 2)) +
+  labs(x="", title = "Lapsed by Occupation Group") +
+  scale_y_continuous(labels = scales::percent_format())
+```
+
+-   Client with Occupation Group 1 are most likely to lapse than occupation group 2,3 and 4.
+
+#### Occupation and Gender
+
+**Does the higher lapse rate in Occupation Group 1 have any correlation with gender distribution in which male clients dominate?**
+
+```{r echo=FALSE}
+policy %>%
+  group_by(Occupation, PO_Sex, Lapsed) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  ggplot(aes(x=Occupation,y=percent, fill=PO_Sex)) +
+  geom_bar(stat = "identity",
+           position = "dodge", alpha=0.7 ) +
+  geom_text(aes(label=sprintf("%1.1f%%", 100*percent)),
+            position=position_dodge(width=0.9), vjust=2)+
+  labs(title = "Lapsed by Occupation Group and PO Gender") +
+  scale_y_continuous(labels = scales::percent_format())
+```
+
+-   Female in occupation group 1 and 2 have a higher possibility of lapse than male, but lower in group 3,4
+
+-   We can consider an interaction between `Occupation` and `PO_Sex`.
+
+#### Others
+
+**What is the Lapsed rate with other categorical variables: Distribution Channel, Payment Term, Coverage Period, PO is Insurred**
+
+```{r echo=FALSE}
+gg.PO_is_INS <-
+  policy %>%
+  count(Lapsed, PO_is_INS) %>%
+  group_by(PO_is_INS) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  ggplot(aes(PO_is_INS,percent, fill=PO_is_INS))+
+  geom_col(alpha = 0.7, show.legend = FALSE, position = "dodge")+
+  geom_text(aes(label=sprintf("%1.1f%%", 100*percent)),
+            position=position_dodge(width=0.9), vjust=2)+
+  labs(x="",title = "Lapsed by PO is also INS person") +
+  scale_y_continuous(labels = scales::percent_format())
+
+gg.Payment <- 
+  policy %>%
+  count(Lapsed, PaymentTerm) %>%
+  group_by(PaymentTerm) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  ggplot(aes(fct_reorder(PaymentTerm,percent),percent, fill=PaymentTerm))+
+  geom_col(alpha = 0.7, show.legend = FALSE, position = "dodge")+
+  geom_text(aes(label=sprintf("%1.1f%%", 100*percent)),
+            position=position_dodge(width=0.9), vjust=2)+
+  labs(x="",title = "Lapsed by Payment Term") +
+  scale_y_continuous(labels = scales::percent_format())
+
+gg.Distribution <-
+  policy %>%
+  count(Lapsed, DistributionChannel) %>%
+  group_by(DistributionChannel) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  ggplot(aes(fct_reorder(DistributionChannel,percent),percent, fill=DistributionChannel))+
+  geom_col(alpha = 0.7, show.legend = FALSE, position = "dodge")+
+  geom_text(aes(label=sprintf("%1.1f%%", 100*percent)),
+            position=position_dodge(width=0.9), vjust=2)+
+  labs(x="",title = "Lapsed by Distribution Channel") +
+  scale_y_continuous(labels = scales::percent_format())
+
+gg.Coverage <-
+  policy %>%
+  count(Lapsed, CoveragePeriod) %>%
+  group_by(CoveragePeriod) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  ggplot(aes(fct_reorder(CoveragePeriod,percent),percent,
+             fill=CoveragePeriod))+
+  geom_col(alpha = 0.7, show.legend = FALSE, position = "dodge")+
+  geom_text(aes(label=sprintf("%1.1f%%", 100*percent)),
+            position=position_dodge(width=0.9), vjust=2)+
+  labs(x="",title = "Lapsed by Coverage Period") +
+  scale_y_continuous(labels = scales::percent_format())
+
+
+ggpubr::ggarrange(gg.Payment,gg.Distribution,gg.Coverage,gg.PO_is_INS,
+                  ncol = 2, nrow = 2)
+```
+
+-   Policy with Monthly Payment mode likely have the highest laspe rate among 4 type of payment.
+
+-   Other Distribution channel and Bancas has the highest and lowest lapsed rate among Distribution channel.
+
+-   Policy with high coverage period is likely to lapse than others.
+
+-  It's likely the policy which PO is also Insured person easily to lapse than other.
+
+### For Numeric variables {.tabset}
+
+#### Premium
+
+```{r include=FALSE, echo=FALSE}
+p.Premimum_bin <- policy %>% 
+  mutate(Premium_bin = cut(Premium,
+                           breaks = c(0,1000,2000,3000,5000,7500,10000,Inf),
+                           labels = c("<1000","1000-2000","2000-3000","3000-5000","5000-7500","7500-10000","10000+"),
+                           include.lowest = T,
+                           right = F)) %>%
+  select(Lapsed,Premium,Premium_bin)
+
+p.Premimum_bin %>%
+  count(Lapsed,Premium_bin) %>%
+  group_by(Premium_bin) %>%
+  mutate(percent= n/sum(n)) %>%
+  filter(Lapsed == "Lapsed")
+
+ggplot() + 
+  geom_bar(data = p.Premimum_bin,
+              aes(x=Premium_bin,
+                  fill=Premium_bin),
+           show.legend = FALSE,
+           alpha = 0.7) +
+  geom_point(data = p.Premimum_bin %>%
+                 filter(Lapsed=="Lapsed"),
+               aes(x=Premium_bin),
+                   stat="count")
+
+
+p.Premimum_bin %>%
+  ggplot(aes(Premium_bin, fill=Lapsed)) +
+  geom_bar(position = position_stack(reverse = TRUE),
+           alpha = 0.8)
+```
+
+```{r echo=FALSE}
+gg.Premium <-
+policy %>%
+  ggplot(aes(Premium, fill=Lapsed))+
+  geom_histogram(binwidth = 1000, color = "gray80",
+                 position = position_stack(reverse = TRUE),
+                 alpha = 0.8) +
+  labs(title = "Histogram of Premium by Lapsed")
+
+gg.Premium
+```
+
+-   It's likely, the lapse rate increase with policy having `Premium` higher than 4,000.
+-   It's clearer with policy with `Occupancy` in Group 1 and Group 2, they have the higher lapsed rate than others.
+-   Beside that, the distribution shape of Premium, break down by Lapse status is not different between male and female.
+
+```{r echo=FALSE}
+gg.Premium +
+  facet_grid(PO_Sex~Occupation)
+```
+
+```{r include = FALSE, echo=FALSE}
+policy %>%
+  group_by(Lapsed, NumOfCalls, NumOfEmails ) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  ggplot(aes(as.factor(NumOfCalls),percent, group=NumOfEmails
+             )) +
+  geom_line() +
+  facet_wrap(~NumOfEmails)
+  
+policy %>%
+  group_by(Lapsed, NumOfReinstated, NumOfCalls ) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  ggplot(aes(as.factor(NumOfReinstated),percent, group=NumOfCalls
+             )) +
+  geom_line() +
+  facet_wrap(~NumOfCalls)
+  
+policy %>%
+  group_by(Lapsed, NumOfClaims, NumOfCalls ) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n/sum(n)) %>%
+  filter(Lapsed == "Lapsed") %>%
+  na.omit() %>%
+  ggplot(aes(as.factor(NumOfCalls),percent, group=NumOfClaims
+             )) +
+  geom_line() +
+  facet_wrap(~NumOfClaims)
+```
+
+#### Client Interaction vs Policy Events
+
+```{r echo=FALSE}
+policy %>%
+  mutate(Lapsed2 = ifelse(Lapsed == "Lapsed",1,0)) %>%
+#  select(Lapsed2, NumOfReinstated, NumOfClaims, NumOfCalls) %>%
+  group_by(NumOfCalls, NumOfReinstated, NumOfClaims) %>%
+  summarise(Lapse_rate = mean(Lapsed2)) %>%
+  ungroup() %>% 
+  na.omit() %>%
+  ggplot(aes(x=NumOfCalls, y=Lapse_rate)) +
+  geom_line()+
+  facet_grid(NumOfClaims ~NumOfReinstated)
+```
+
+```{r echo=FALSE}
+policy %>%
+  mutate(Lapsed2 = ifelse(Lapsed == "Lapsed",1,0)) %>%
+  group_by(NumOfEmails, NumOfReinstated, NumOfClaims) %>%
+  summarise(Lapse_rate = mean(Lapsed2)) %>%
+  ungroup() %>% 
+  na.omit() %>%
+  ggplot(aes(x=NumOfEmails, y=Lapse_rate)) +
+  geom_line()+
+  facet_grid(NumOfClaims ~NumOfReinstated)
+```
+
+- For policy with less than 2 events (Reinstated and/or Claims), the lapse rate does not fluctuate change although the number of interaction (NumOfCalls/ NumOfEmails) change.
+
+- However, it's likely the lapse rate reduces if increasing client interaction (via Calls/Email) for the policy having more than 2 events.
+
+#### Age
+
+Let's see distribution of `PO_Age`, and in correlation with gender.
+
+```{r Age_density, include=FALSE}
+policy %>%
+  ggplot(aes(PO_Age, fill=PO_Sex)) +
+  geom_density(alpha=0.6) + 
+  labs(title= "Age distribution",substitle="Group be PO_Sex") +
+  theme_light(base_size = 10)
+```
+
+```{r echo=FALSE}
+policy %>%
+  ggplot(aes(PO_Age, fill=Lapsed))+
+  geom_histogram(bins = 8, color = "gray80",
+                 position = position_stack(reverse = TRUE),
+                 alpha = 0.8) +
+  labs(title = "Histogram of PO_Age") +
+  facet_wrap(~PO_Sex)
+```
+
+- Lapse for male is higher than female for age from 30-40, but lower in other range.
+
+#### Correlation check
+
+```{r}
+library(ggplot2)
+library(GGally)
+
+# Numeric variables correlation check
+policy %>%
+  select(PO_Age,INS_Age,Premium) %>%
+  ggpairs()
+
+# Those variables are ordinal numeric (with value from [1,6]), but seem they should not convert to categorical or normalize in pre-processing.
+policy %>%
+  select(NumOfReinstated,NumOfClaims,NumOfEmails,NumOfCalls,AgentYearSVR) %>%
+  ggpairs()
+```
+
+```{r}
+# small function to display plots only if it's interactive
+policy %>%
+  select(PO_Age,INS_Age,Premium,PO_Sex) %>%
+  ggpairs(columns = 1:3, 
+          ggplot2::aes(colour=PO_Sex))
+
+policy %>%
+  select(PO_Age,INS_Age,Premium,PO_Sex) %>%
+  ggpairs(ggplot2::aes(colour=PO_Sex))
+```
+
+```{r include=FALSE, echo=FALSE}
+policy %>%
+  select(PO_Age,INS_Age,Premium) %>%
+  ggcorr()
+```
+
+## Wrapping-Up
+
+After EDA, the following findings and action plan for next steps are as below:
+
+-   There are missing value in `NumOfEmails, NumOfCalls, NumOfClaims` and `Phone_registered`. However, they are not major, we can ignore them when building models.
+
+-   `NumOfReinstated, NumOfClaims, NumOfCalls, NumOfEmails` are integer variables, but they range from 0-5. We can keep them as numeric or convert them to categorical.
+
+-   Other numeric variables except the above could be normalized by scaling and centering.
+
+-   Nominal variable should be converted into dummy variable in the pre-processing.
+
+<br>
+<center>
+
+  ***Next: Policy Lapse Prediction***
+
+</center>
+
+<!-- More reference with ggpair <https://ggobi.github.io/ggally/reference/ggpairs.html> -->

@@ -1,0 +1,13 @@
+{
+    "sortOrder": [
+        {
+            "columnIndex": 4,
+            "ascending": false
+        },
+        {
+            "columnIndex": 2,
+            "ascending": true
+        }
+    ],
+    "path": "~/Library/CloudStorage/OneDrive-Personal/Learning/R for Data Science/PolicyLapse_Analysis"
+}

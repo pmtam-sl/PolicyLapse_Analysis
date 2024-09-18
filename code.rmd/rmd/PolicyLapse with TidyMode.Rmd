@@ -1,0 +1,120 @@
+---
+title: "Policy Lapse with TidyMode"
+author: "Tam Pham"
+date: "`r Sys.Date()`"
+output: html
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, warning = FALSE,
+                      message = FALSE, echo = TRUE, dpi = 180,
+                      fig.width = 8, fig.height = 5,
+                      digits = 3)
+
+library(tidyverse)
+```
+
+## Explore Data
+
+```{r}
+policy <-
+readxl::read_xlsx("../data/PolicyLapse.xlsx")
+
+policy <-
+  policy %>%
+  select(-is.logical) %>%
+  mutate_if(is.character,factor)
+```
+
+Summary policy data:
+
+```{r skim}
+library(skimr)
+my_skim <- skim_with(factor=sfl(pct = ~{
+      prt <- sort(prop.table(table(.)), decreasing = TRUE)
+      val <- sprintf("%.2f", prt)
+      nm1 <- substr(names(prt), 1, 3)
+      stringr::str_c(nm1, val, sep = ": ", collapse = ", ")
+      })
+)
+
+my_skim(policy)
+```
+
+Overall, we can see:
+- 32% of policy is lapse.
+- 53% of policy owner are male, similar to 52% of insured person are male.
+- 14% of PO is also insured person.
+- PO age range from 22 to 59 with average age 43.3.
+- We also found some missing value in Number Of Emails, Calls, Claims and Phone registered information.
+
+Let's visualize data for Exploratory Data Analytics
+
+### Gender
+
+```{r}
+table(policy$Lapsed,policy$PO_Sex) %>%
+  prop.table(2) %>%
+  round(.,2)
+
+library(gmodels) 
+CrossTable(policy$Lapsed,policy$PO_Sex,
+           prop.chisq = FALSE,
+           prop.r = FALSE,
+           prop.t = FALSE
+           )
+```
+
+```{r}
+policy %>%
+  filter(Lapsed=="Lapsed") %>%
+  count(PO_Sex) %>%
+  ggplot(aes(PO_Sex, n, fill=PO_Sex))+
+  geom_col(show.legend = FALSE) +
+  labs(title = "Lapse by PO gender")
+``` 
+
+```{r}
+policy %>% 
+  select(Lapsed, PO_Sex, INS_Sex) %>%
+  pivot_longer()
+  
+
+```
+
+
+
+
+## Fearure Engineering
+
+
+## Build models
+
+## Evaluate and Finalize model
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

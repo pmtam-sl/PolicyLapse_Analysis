@@ -1,0 +1,722 @@
+---
+title: "Logistic Regression for Lapse Analysis"
+author: "Tam Pham"
+date: "4/8/2021"
+output: word_document
+#knitr:
+#  opts_chunk:
+#    cache.path: "code/knit_folder/cache/"    # Path for cached files
+#    fig.path: "code/knit_folder/figures/"    # Path for figures
+#knit_root_dir: "code/knit_folder"  # Set the knit directory to the knit_folder
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(output.dir = "knit_folder")
+knitr::opts_knit$set(output.dir="papers")
+knitr::opts_chunk$set(cache.path = "code/knit_folder/cache/", fig.path = "code/knit_folder/figures/")
+```
+
+```{r library, include = FALSE }
+# Packages Load 
+library(rms)
+library(tidyverse)
+#library(readxl)
+library(BMA)
+
+library(table1)
+library(flextable)
+```
+
+# Prevent Policies Lapse Proactively
+
+Persistency is a key driver for successful insurance business. We just cannot let existing customers churn and then terminate their policies. Data science proactive alerts and actions are necessary to address policy lapse.
+
+The typical solution approach is to devise a logistic regression model to predict the likelihood of lapse of policies. There are several data points that go in as inputs to this model like the following:
+
+-   Customer Demographics -- Gender, Age, Race, Income, Nationality, Marital Status
+-   Customer Interaction mode and frequency with company -- Email, Phone, others (fax, letters)
+-   Number and type of insurance products customers have bought from the company
+-   Policy details -- Agent, Sum Insured, Premium, Term
+-   Each event for the policy -- Inception, Lapse, Claim, Reinstatement, Cancel, Surrender, Mature
+
+The model output helps in predicting whether a certain customer profile is likely to lapse or not. It also provides indicators on the significant factors impacting lapse, for example, Age, Premium level ,Channel of customer, Customer interaction etc that can help you take focused actions.
+
+# Logistic Regression Analysis
+
+Logistic Regression Analysis is a statistical analysis technique to :
+
+-   **model** the probability of an event occurring depending on the values of the independent variables
+-   **estimate** the probability that an event occurs for a randomly selected observation versus the the probability that the event does not occur
+-   **predict** the effect of a series of variables on a binary response variable
+-   **classify** observations by estimating the probability that an observation in a particular category (such as Lapse or No-Lapse in our study)
+
+## Basic review of Logistic Regression
+
+In Logistic Regression, we study the probability of event which has two value 0 and 1: P(y\|x) where y=[0,1] and x as input variables. Logistic Regression models the relationship between the probability of response (y) and predictor (x) using a logistic function:
+
+$P(y|x)=\frac{e^{𝜷_0+𝜷_1x}}{1+e^{𝜷_0+𝜷_1x}}$ (1)
+
+By algebraic equation, the logistic regression can be written in terms of Odds ratio ("OR") - of the event y (in this study 'y' is the ***Lapse event***)
+
+$OR(y)=\frac{P(y|x)}{1-P(y|x)}=e^{𝜷_0+𝜷_1x}$ (2)
+
+Odds ratios range from 0 to positive infinity:\
+- A value greater than 1 equates to probability of event greater than 0.5 (or 50%).\
+- A value less than 1 equates to probability of event less than 0.5
+
+Taking natural log of both sides, we have log-odds (logit) of the probability
+
+$log(\frac{P(y|x)}{1-P(y|x)})=𝜷_0+𝜷_1x$ (3)
+
+Logistic regression transforms as a linear regression to find the log-odds of the probability. By analyzing linear regression function in formula (3) we can find the intercept($𝜷_0$) and coefficient ($𝜷_1$) in order to solve Logistic regression in formula (2) and (1) as well as find their Odds ratio $OR(y)$ and Probability $P(y)$ .
+
+With result, we can interpret: Increasing x by one unit changes
+
+a.  the log odds by $𝜷_1$, or
+b.  the OR(y) by $e^{𝜷_1}$, or
+c.  the P(y) by $\frac{e^{𝜷_1}}{1+e^{𝜷_1}}$
+
+## Basic assumption for Binary Logistic Regression
+
+The logistic regression analysis have the following basic assumptions
+
+1.  Continuous independent variables have a linear relationship with response function.
+2.  Independent variables do not have multiple linear relationships. (Multicollinearity)
+
+## Selection of independence variables
+
+We normally evaluate Logistic Regression Model based on:
+
+-   "Goodness of fit" parameters
+-   Deviance
+-   Likelihood ratio test (LRT)
+-   Akaike Information Criterion (AIC)
+
+In this study we will run analysis to define the best logistic model follow
+
+-   AIC based algorithm : Apply Stepwise (forward) algorithm or Backward algorithm to find model with lowest AIC.
+-   Bayesian Model Average (BMA) : Apply to find model with lowest BIC (Bayesian Information Criterion)
+
+# Data Set
+
+```{r, include=FALSE}
+# Read data 
+library(here)
+dat <- read.csv(here("data","Insurance.csv"),header =T)
+
+#dat <- read_excel("/Users/tamphamminh/OneDrive/Learning/R for Data Science/Insurance_practices/data/Insurance.xlsx", sheet ="Data")
+
+#dat <- dat[,Col]
+```
+
+## For testing data
+
+```{r, include = FALSE}
+# Kiểm tra dataset - To be deleted
+
+#Occ <- read.csv("/Users/tamphamminh/OneDrive/Learning/R for Data Science/Insurance_practices/data/Lap_Cover.csv",header =T)
+
+#Occ2 <- read.csv("/Users/tamphamminh/OneDrive/Learning/R for Data Science/Insurance_practices/data/Lap_Occupation2.csv",header =T)
+
+#Occ$Premium <-gsub (",","",Occ$Premium) %>%
+#  as.numeric()
+#Occ2$Premium <-gsub (",","",Occ2$Premium) %>%
+#  as.numeric()
+
+
+#Occ.glm2 = glm(Lapse~ Occupation, family = binomial, data=Occ)
+#Occ.glm3 = glm(Lapse~ PremiumG , family = binomial, data=Occ)
+#Occ.glm4 = glm(Lapse~ Premium , family = binomial, data=Occ)
+#Occ.glm5 = glm(Lapse~ CoveragePeriod , family = binomial, data=Occ)
+#Occ.glm6 = glm(Lapse~ PaymentTerm , family = binomial, data=Occ)
+#Occ.glm23 = glm(Lapse~ Occupation+PremiumG , family = binomial, data=Occ)
+#Occ.glm24 = glm(Lapse~ Occupation+Premium, family = binomial, data=Occ)
+
+#Occ2.glm2 = glm(Lapse~ PO_Occupation, family = binomial, data=Occ2)
+#Occ2.glm3 = glm(Lapse~ PremiumG , family = binomial, data=Occ2)
+#Occ2.glm4 = glm(Lapse~ Premium , family = binomial, data=Occ2)
+#Occ2.glm23 = glm(Lapse~ PO_Occupation+PremiumG , family = binomial, data=Occ2)
+#Occ2.glm24 = glm(Lapse~ PO_Occupation+Premium, family = binomial, data=Occ2)
+
+#summary(Occ.glm2);summary(Occ2.glm2)
+# PO_Occupation có p<0.05 có ý nghĩa thống kê 
+# logit(P) = 0.79302 - 0.67475*PO_Occupation 
+#summary(Occ.glm3);summary(Occ2.glm3)
+#summary(Occ.glm4);summary(Occ2.glm4)
+#summary(Occ.glm5);summary(Occ.glm6)
+#summary(Occ.glm23);summary(Occ2.glm23)
+#summary(Occ.glm24);summary(Occ2.glm24)
+
+#temp = glm(Lapse ~ ., family = binomial , data = Occ)
+#search = step(temp)
+#search 
+
+# 
+
+#d1=datadist(Occ)
+#options(datadist="d1")
+
+#Occ.lrm2 = lrm(Lapse ~ Occupation, Occ)
+#Occ.lrm3 = lrm(Lapse ~ PremiumG, Occ)
+#Occ.lrm4 = lrm(Lapse ~ Premium, Occ)
+#Occ.lrm23 = lrm(Lapse ~ Occupation+PremiumG+CoveragePeriod+PaymentTerm, Occ)
+
+#Occ2.lrm2 = lrm(Lapse ~ PO_Occupation, Occ2)
+#Occ2.lrm3 = lrm(Lapse ~ PremiumG, Occ2)
+#Occ2.lrm4 = lrm(Lapse ~ Premium, Occ2)
+#Occ2.lrm23 = lrm(Lapse ~ PO_Occupation+PremiumG, Occ2)
+
+#Occ3.lrm2 = lrm(Lapse ~ Occupation, Occ3)
+#Occ3.lrm3 = lrm(Lapse ~ PremiumG, Occ3)
+#Occ3.lrm4 = lrm(Lapse ~ Premium, Occ3)
+#Occ3.lrm5 = lrm(Lapse ~ CoveragePeriod, Occ3)
+#Occ3.lrm6 = lrm(Lapse ~ PaymentTerm, Occ3)
+
+#Occ3.lrm23 = lrm(Lapse ~ Occupation+PremiumG, Occ3)
+
+#summary(Occ.lrm2);summary(Occ2.lrm2);summary(Occ3.lrm2);summary(Occ3.lrm21)
+
+# With PO_Occupation, the Odds ratio to Lapse is 0.51 with CI 0.44 - 0.58  
+
+#summary(Occ.lrm3);summary(Occ2.lrm3)
+#summary(Occ.lrm4);summary(Occ2.lrm4)
+#summary(Occ.lrm23);summary(Occ2.lrm23)
+
+
+#AIC(Occ.lrm2);AIC(Occ.lrm3);AIC(Occ.lrm23)
+#AIC(Occ2.lrm2);AIC(Occ2.lrm3);AIC(Occ2.lrm23)
+
+# Run BMA
+#library(BMA)
+
+#predictors1 = Occ2[,2:6] # lấy lại ma trận txt từ cột 2 đến 5 - loại trừ Lapse 
+#outcome1 =Occ2[,1] # Gán biến outcome
+
+#bma.search2 = bic.glm(predictors1,outcome1, strict=F, OR=20, glm.family="binomial")
+#summary(bma.search1) 
+
+#predictors2 = Occ2[,2:4] # lấy lại ma trận txt từ cột 2 đến 5 - loại trừ Lapse 
+#outcome2 =Occ2[,1] # Gán biến outcome
+
+#bma.search2 = bic.glm(predictors2,outcome2, strict=F, OR=20, glm.family="binomial")
+#summary(bma.search2) 
+
+```
+
+## Explanatory of Data Set
+
+The sample data for analysis has totaling of 1340 policies (434 Lapse, 907 inforce). Data have 10 variables divide into 2 groups:
+
+1.  Six quantitative variables as : Age, Premium Amount, Number of Reinstated, Number of Claims, Number of Emails, Number of Calls.
+2.  Four qualitative variables as : Gender, Occupation Group, Coverage Period, Payment Term,
+
+# Build & Select Logistic Regression Model
+
+We will analyze Logistic Regression in two study models
+
+-   Study 1 : Analyze Lapse with Customer Demography and Policy Detail
+-   Study 2 : Analyze Lapse with Customer Event and Interaction
+
+The Logit model in both study are likely :
+
+$Logit(P) = B_0 + B_1X_1 + B_2X_2 + B_3X_3 + ... B_nX_n$
+
+## Study 1 : Analyze Lapse with Customer Demography and Policy Detail
+
+P is the probability of Lapse based on the following factors : Sex, Occupation, Premium, Coverage Period, Payment Term. There are variation of models :
+
+-   Logit(P) = a + b\*Sex
+-   Logit(P) = a + b\*Sex + c\*Occupation
+-   Logit(P) = a + b\*Sex + c\*Occupation + d\*Premium
+-   Logit(P) = a + b\*Sex + c\*Occupation + d\*Premium + e\*Coverage
+-   Logit(P) = a + b\*Sex + c\*Occupation + d\*Premium + e\*Coverage + f\*Payment
+
+```{r, include = FALSE}
+
+Col1=c("Lapse","PO_Sex","Occupation","Premium","CoveragePeriod","PaymentTerm")
+dat1 <- dat[,Col1]
+
+# Do Premium là Character nên đa phải đổi 
+dat1$Premium <-gsub (",","",dat$Premium) %>%
+  as.numeric()
+
+#glm1 = glm(Lapse~ PO_Sex, family = binomial, data=dat1)
+#glm2 = glm(Lapse~ Occupation, family = binomial, data=dat1)
+#glm3 = glm(Lapse~ PremiumG , family = binomial, data=dat1)
+#glm4 = glm(Lapse~ CoveragePeriod, family = binomial, data=dat1)
+#glm5 = glm(Lapse~ PaymentTerm, family = binomial, data=dat1)
+#glm23 = glm(Lapse~ Occupation+PremiumG , family = binomial, data=dat1)
+#glm34 = glm(Lapse~ PremiumG+CoveragePeriod, family = binomial, data=dat1)
+#glm35 = glm(Lapse~ PremiumG+PaymentTerm, family = binomial, data=dat1)
+#glm345 = glm(Lapse~ PremiumG+CoveragePeriod+PaymentTerm , family = binomial, data=dat1)
+
+#summary(glm1);summary(glm2);summary(glm3);summary(glm4);summary(glm5)
+#summary(glm23);summary(glm123);summary(glm34);summary(glm35);summary(glm345) 
+
+#AIC(glm2);AIC(glm3);AIC(glm4);AIC(glm5)
+#AIC(glm23);AIC(glm123);AIC(glm34);AIC(glm35);AIC(glm345)
+
+```
+
+### Using backward stepwise method to examine the selection of independent variables
+
+```{r, echo=FALSE}
+#To find best model 
+temp = glm(Lapse ~ ., family = binomial , data = dat1)
+search = step(temp)
+search 
+
+glm1 = glm(Lapse~ Premium+CoveragePeriod , family = binomial, data=dat1)
+glm2 = glm(Lapse~ Occupation+Premium+CoveragePeriod , family = binomial, data=dat1)
+
+```
+
+With smallest AIC, the suggested model for Logit(P) is:
+
+Logit(P) = `r round(search$coefficients[1],4)`+(`r round(search$coefficients[2],4)`)\*Occupation + 0.00013\*Premium + `r round(search$coefficients[4],4)`\*CoveragePeriod
+
+*Sex and Payment Term are eliminated from suggested model.*
+
+### Using Bayesian Model Average (BMA) to find model with smallest Bayesian Information Criterion (BIC)
+
+```{r, echo = FALSE}
+# Chạy với lrm 
+d=datadist(dat1)
+options(datadist="d")
+#lrm1 = lrm(Lapse ~ PO_Sex, dat1)
+#lrm2 = lrm(Lapse ~ Occupation, dat1)
+#lrm3 = lrm(Lapse ~ PremiumG, dat1)
+#lrm4 = lrm(Lapse ~ CoveragePeriod , dat1)
+#lrm5 = lrm(Lapse ~ PaymentTerm , dat1)
+
+# Kiểm tra Khác biệt giữa mô hình tương tác 
+#lrm23 = lrm(Lapse ~ Occupation*PremiumG, dat1)
+#lrm2.3 = lrm(Lapse ~ Occupation+PremiumG, dat1)
+
+#lrm23 # Xem xét p của PO_Occupation * Premium tat thấy p < 0.05 ==> có ý nghĩa tương tác 
+#lrm2.3
+
+#lrm123 = lrm(Lapse ~ PO_Sex*Occupation*Premium, dat1)
+#lrmful = lrm(Lapse ~ ., dat1)
+
+#summary (lrm1);summary(lrm2);summary(lrm3);summary(lrm4);summary(lrm5);summary(lrm23)
+#AIC(lrm1);AIC(lrm2);AIC(lrm3);AIC(lrm4);AIC(lrm5);AIC(lrm23)
+
+#AIC(lrmful)
+
+# Xem xét Occupation trong lrm2
+#Logit (P) = intercept + Coef*PO_Occupation 
+
+# Chay với BMA 
+# library(BMA)
+predictors = dat1[,2:6] # lấy lại ma trận txt từ cột 2 đến 5 - loại trừ Lapse 
+outcome =dat1[,1] # Gán biến outcome
+bma.search = bic.glm(predictors,outcome, strict=F, OR=20, glm.family="binomial")
+summary(bma.search) 
+
+imageplot.bma(bma.search)
+```
+
+```{r include=FALSE}
+# Additional testing to evaluate models
+
+lrm1 = lrm(Lapse ~ Premium+CoveragePeriod, dat1)
+lrm2 = lrm(Lapse ~ Occupation+Premium+CoveragePeriod, dat1)
+
+summary(lrm2)
+lrm2 
+
+# Deviance : khác biệt giá tri quan sát và giá trị tiên lượng 
+# Deviance = y-p(x) (y giá trị quan sát , p(x) giá tri tiên lương với independet variables (x))
+# Deviance = -2 x log likelihood (or Residual Deviance)
+deviance(glm2);deviance(glm1)
+# Nul Deviance : Mô hình chưa có independent variables
+# Residual Deviance : Mô hình đã có independent variables (predictor variables)
+# Khác biệt càng lớn giữa Nul Deviance và Residual Deviance chứng tỏ tác động của idependent variable vô mô hình càng lớn.
+
+# Xem xét các chỉ số chỉ độ thích hợp của mô hình ("Goodness of fit")
+# Model Likelihood Ratio Test
+# LR chi2 : LRT chi-square 
+
+# Discrimination Indexes (chỉ số liên quan đến phân định )
+
+# R2 = R-square , còn gọi là Hệ số xác định Coefficient of Determination cung cấp chì số nếu mô hình thích hợp hay không ?
+# Trong mô hìh hồi quy tuyên tính R2 = 1- (residual SS/total SS) - 
+# Trong mô hình hồi quy logic tuyến tính không có hệ số R2, chỉ có "pseudo-R2"
+# pseudo R2 = 1 - (residual deviance / null  deviance)
+
+# The function below extract the relevant data from the model that is passed as argument and expresses the relevant R2 values
+rsquared <- function(created_model) {
+  dev <- created_model$deviance
+  null_dev <- created_model$null.deviance
+  model_n <- length(created_model$fitted.values)
+  R_l <- 1 - dev / null_dev
+  R_cs <- 1 - exp(-(null_dev - dev) / model_n)
+  R_n <- R_cs / (1 - exp(-(null_dev / model_n)))
+  cat("Pseudo R-squared for logistic regression model\n\n")
+  cat("Hosmer and Lemeshow R-squared\t", round(R_l, 3), "\n")
+  cat("Cox and Snell R-squared\t\t\t", round(R_cs, 3), "\n")
+  cat("Nagelkerke R-squared\t\t\t\t", round(R_n, 3), "\n")
+}
+
+rsquared(glm2)
+# Using Hosmer and Lemeshow R-squared:
+# R2 : "The model account for 29.2% of the variability of the Lapse variable .
+
+# Alternative pseudo R2
+# R2 in lrm2 is using Nagelkere R-squared 
+lrm2$stats[10] 
+#=0.430  
+# 
+
+## More detail on Logistic Regression https://mgimond.github.io/Stats-in-R/Logistic.html
+
+# Chỉ số Brier 
+# Có thể xem như "mean square error" - MSE
+# Brier càng thấp càng tốt !
+# https://rdrr.io/cran/DescTools/man/BrierScore.html
+lrm2$stats[11]
+
+# Rank Discrimination . Indexes (chỉ số liên quan đến phân định - có sắp xếp thứ tự)
+# C : is AUC - Area Under the Curve trong đường biễu diễn ROC - Receiver Operating Characteristic curve
+# Đánh giá độ phân định (discrimination) giửa Laspe và khôg Lapse
+# Values for this measure range from 0.5 to 1.0, with higher values indicating better predictive models. A value of 0.5 indicates that the model is no better than chance at making a prediction of membership in a group and a value of 1.0 indicates that the model perfectly identifies those within a group and those not. Models are typically considered reasonable when the C-statistic is higher than 0.7 and strong when C exceeds 0.8.
+# https://rdrr.io/cran/DescTools/man/Cstat.html
+lrm2$stats[6]
+# Có thể tính Xác suất : mà chúng ta quan sát được khi mà giá trị tiên lương của Lapse cao hơn gá trị tiên lương của người không Lapse ???  
+
+# Dxy = hệ số tương quan theo thứ bậc (Somers ranks correlation)
+# đo lường độ tương quang giữa xác suất tiên lượng (p) và biến cố quan sát
+# Dxy = 2(c-0.5)
+lrm2$stats[7]
+
+# The better model, if
+# - Lower Deviance 
+# - Lower AIC
+# - LRT when comparing 2 models is statistical significance
+
+# Likelihood Ratio Test (LRT) - to compare 2 models "nested"
+# LRT = -2log(L1/L2)
+# LRT = -2*[log(L1)-log[L2]] = Deviance[1] - Deviance[2]
+deviance(glm1)-deviance(lrm2)
+# Or we can use lrtest 
+lrtest(lrm1,lrm2) 
+# large log-likelihood statistic indicates a poor fit (similar in idea to a large residual sum of squares statistic for a linear model)
+
+# AIC - Aikaki Information Criterion 
+# AIA = -2log likelihood + 2[(k-1)+p] = Residual Deviance + 2[(k-1)+p]
+# k là số bậc / hay giá trị của Y (thường là 2)
+# p là số biến tiên lượng trong mô hình
+#glm2
+#AIC <- 1195 +2*((2-1)+3) = 1203
+# The lower AIC the better model 
+
+
+# Xem thêm các ý nghĩa của các thông số trong mô hình 
+
+# Confusion matrix 
+threshold=0.5
+predicted_values<-ifelse(predict(glm2 ,type="response")>threshold,1,0)
+actual_values<-glm2$y
+conf_matrix<-table(predicted_values,actual_values)
+conf_matrix
+
+#Code-Sensitivity and Specificity
+library(caret)
+sensitivity(conf_matrix)
+specificity(conf_matrix)
+accuracy <-(conf_matrix[1,1]+conf_matrix[2,2])/sum(conf_matrix)
+accuracy 
+
+conf0<-confusionMatrix(as.factor(predicted_values),as.factor(actual_values))
+conf1<-confusionMatrix(as.factor(predicted_values),as.factor(actual_values), positive="1")
+conf0;conf1
+
+# Discrimination 
+# Present by Area under the curve / or ROC - Receiver Operating Characteristic 
+# AUC > 0.8 is considered good model - mô hình có phân định (concordance) tốt 
+
+# ROC & AUC
+library(pROC)
+
+p1 = predict (glm1,type="response")
+p2 = predict (glm2,type="response")
+
+r1 = roc(dat1$Lapse,p1);r2 = roc(dat1$Lapse,p2)
+auc(r2);ci(r2);ci.auc(r2)
+#AUC or similar c-value in Rank Discri. Indexes is a measure of concordance between observed and predicted values 
+lrm2$stats[6]
+
+plot.roc(r2)
+plot.roc(r2,  lty=2, col="red", print.auc=T,xlim =c(1,0))
+plot.roc(r1, add=T)
+
+# Calibration : Evaluation of predictive models 
+# Calibration = accuracy of model prediction 
+# The agreement between the estimated and observed number of events 
+# To use Brier score = residual bình phuong to evaluate 
+lrm2$stats[11]
+# Lower Brier score the better 
+
+# Bootstrap calibration (NVT -YT#87 (19:00))
+# Package "rms"
+# Functions:
+# - Using lrm , calibrate 
+fit = lrm(Lapse ~ Occupation+Premium+CoveragePeriod, data=dat1, x=T, y=T)
+cal = calibrate(fit, method="boot", B=50, rule="aic") 
+plot(cal)
+
+# Mo hình fix khá tốt với absolute error = 0.041 nhỏ 
+summary(cal)
+
+# - Using glm and val.prob
+fit = glm(Lapse ~ Occupation+Premium+CoveragePeriod, data=dat1, family="binomial" )
+dat1$predicted = predict(glm2,type = "response")
+val = val.prob(dat1$predicted,dat1$Lapse)
+
+summary(val)
+
+```
+
+BMA suggests best 3 models with cumulative posterior probability equal 1. Two of them have total post prob of 95%:
+
+-   Model 1 : Logit(P) = -3.602 + 0.00013\*Premium + 0.5037\*CoveragePeriod
+
+-   Model 2 : **Logit(P) = -3.111 - 0.1869\*Occupation + 0.00013\*Premium + 0.5101\*CoveragePeriod**
+
+We consider Model 2 as it is also suggested via AIC algorithm, its Deviance is lower and LRT is statistical significance.
+
+### Validation of logistic regression model
+
+Validate the validity of selected model based on statistical value
+
+```{r, echo=FALSE}
+lrm2 
+```
+
+-   Overall model evaluation by Likelihood ratio test had a p-value of 0.0001 which was less than significant level 0.05 , so the model statistically significant.
+-   Area under the curve (AUC) or c-value is to measure discrimination between observed and predicted value; for this model c-value is good at 0.805.
+-   Psuedo-R2 expresses the percentage of the variability of the outcome variable by the independent variables. From table below, the model account for 29.2%,30.8% or 43% based on statistic formula:
+
++---------------------+-----------------+
+| Based on            | Psuedo-R2       |
++=====================+:===============:+
+| Hosmer and Lemeshow | | 0.292         |
++---------------------+-----------------+
+| Cox and Snell       | | 0.308         |
++---------------------+-----------------+
+| Nagelkerke          | | 0.430         |
++---------------------+-----------------+
+
+## Study 2 : Analyze Lapse with Customer Event and Customer Interaction
+
+We will investigate the Lapse possibility in correlation with Customer Events: Number of Reinstatement, Number of Claims and Interaction activities with customer such as Number of Emails, Phone calls.
+
+```{r, include =FALSE}
+
+# Các mô hình 
+Col2 = c("Lapse","NumOfReinstated","NumOfClaims","NumOfEmails","NumOfCalls")
+dat2 <- dat[,Col2]
+
+#glm1 = glm(Lapse  ~ NumOfReinstated, family = binomial, data=dat2 )
+#glm2 = glm(Lapse ~ NumOfClaims, family = binomial, data = dat2)
+#glm3 = glm(Lapse  ~NumOfReinstated+NumOfEmails+NumOfCalls, family=binomial, data=dat2) 
+#summary (glm1);summary(glm2);summary(glm3)
+#AIC(glm1);AIC(glm2);AIC(glm3)
+```
+
+### Using stepwise to identify lowest AIC model
+
+```{r, echo=FALSE}
+# Thử tìm mô hình tối ưu 
+
+temp2 = glm(Lapse ~ ., family = binomial , data = dat2)
+search2 = step(temp2)
+search2
+summary(search2)
+```
+
+Logit(p) = `r round(search2$coefficients[1],4)` +`r round(search2$coefficients[2],4)`\*NumOfReinstated +`r round(search2$coefficients[3],4)`\*NumOfClaims `r round(search2$coefficients[4],4)`\*NumOfEmails `r round(search2$coefficients[5],4)`\*NumOfCalls
+
+### Using Bayesian Model Average (BMA)
+
+```{r, echo=FALSE}
+library(BMA)
+predictors2 = dat2[,2:5] # lấy lại ma trận txt từ cột 2 đến 5 - loại trừ Lapse 
+outcome2 =dat2[,1] # Gán biến outcome
+
+bma.search2 = bic.glm(predictors2,outcome2, strict=F, OR=20, glm.family="binomial")
+
+summary(bma.search2)
+```
+
+2 models are selected by BMA with cumulative posterior probability equal 1:
+
+-   Model 1 with post prob of 94.6% have coefficients as same as suggested in AIC algorithm:
+
+    **Logit(P) = - 0.6385 + 0.5673\*NumOfReinstated + 0.2582\*NumberOfClaims - 0.2323\*NumOfEmails - 0.3411\*NumberOfCalls**
+
+-   Model 2 with 5.4% post prob :
+
+    Logit(P) = - 0.8527 + 0.5113\*NumOfReinstated + 0.2358\*NumberOfClaims - 0.3665\*NumberOfCalls
+
+Model 1 with BIC=-8046 is preferable than Model 2 with BIC=-8041
+
+### Checking the validity of model
+
+```{r  echo=FALSE}
+#d=datadist(dat2)
+#options(datadist="d")
+#lrm2 = lrm(Lapse ~NumOfReinstated+NumOfEmails+NumOfCalls ,dat2)
+lrm1 = lrm(Lapse ~. , dat2 )
+lrm1 
+#AIC(lrm1);AIC(lrm2)
+
+rsquared(search2)
+```
+
+-   As p-value of Likelihood Ratio test less than significant value (\<0.0001), the LR Test for model is statistically significant.
+-   C-value of 0.650 show a fairly discrimination between observed and predicted values.
+
+# Interpretation of Coefficient and Forecasting
+
+## Study 1: Lapse probability with Occupation, Premium and Coverage Period
+
+Logit(P) = -3.1110 - 0.1869\*Occupation + 0.0001\*Premium + 0.5101\*CoveragePeriod
+
+***Odds ratio table***
+
++----------------+---------------+---------------+---------------+
+|                | Odds ratios   | CI 95%        | for Diff.     |
++================+:=============:+:=============:+==============:+
+| Occupation     | 0.829         | 0.702 - 0.981 | 1             |
++----------------+---------------+---------------+---------------+
+| Premium        | 4.362         | 3.583 - 5.312 | 11682         |
++----------------+---------------+---------------+---------------+
+| CoveragePeriod | 2.773         | 1.866 - 4.122 | 2             |
++----------------+---------------+---------------+---------------+
+
+Given others variables constant,
+
+-   For each unit increase of *Occupation group*, logit(P) decreases 0.187 units, Odds ratio (OR) of probability P increase 0.829 or *predict* Odds(P) decrease 17%.
+-   For each 1,000 Dollar increase of *Premium*, logit(P) decreases 1,000\*0.000126 units = 0,1261 units, OR(̂P) changes $e^{0.1261}=`r exp(0.1261)`$ or *predict* Odds(P) increase 13.44%
+-   For each unit increase of *Coverage Period*, logit(P) increase 0.5101 units respectively , OR(P) changes $e^{0.5101}=`r exp(0.5101)`$ or *predict* Odds(P) increase 66.55%
+
+***Lapse Forecasting***
+
+From the observed data, this predictive model forecasts 281 Lapse policies, representing of 20.95 %, and 1060 insured expecting do not terminate their policy (or \~79.05%); the accuracy of this forecasting is 0.8233 with 95% CI (0.8018, 0.8433) and Specificity=0.9537, Sensitivity=0.5507.
+
++-------------------------------+:------------------------------:+:--------------------------:+:-----------------------:+
+|                               | **Observation**                |                            |                         |
++-------------------------------+--------------------------------+----------------------------+-------------------------+
+| [**Forecasting**]{.underline} | [**Policy Lapse**]{.underline} | [**No-Lapse**]{.underline} | [**Total**]{.underline} |
++-------------------------------+--------------------------------+----------------------------+-------------------------+
+| Policy Lapse                  | 239                            | 42                         | 281                     |
++-------------------------------+--------------------------------+----------------------------+-------------------------+
+| No Lapse                      | 195                            | 865                        | 1060                    |
++-------------------------------+--------------------------------+----------------------------+-------------------------+
+| Total                         | **434**                        | **907**                    | **1341**                |
++-------------------------------+--------------------------------+----------------------------+-------------------------+
+
+```{r, echo =FALSE}
+
+r1 = c("Policy Lapse",239,42,281)
+r2 = c("No Lapse",195,865,1060)
+r3 = c("Total",434,907,1341)
+
+df <- rbind(r1,r2,r3) %>%
+  as.data.frame() 
+colnames(df) = c("Predicted","Lapse","No-Lapse","Total")
+
+ft <- flextable(df) %>%
+  add_header_row(.,colwidths =c(1,3), values=c(" ","Observation")) %>%
+  theme_vanilla()
+
+ft
+```
+
+## Study 2: Lapse probability with Number of Reinstated, Claims and Number of Emails, Calls to Customer
+
+Logit(P) = -0.6385 + 0.5673\*NumOfReinstated + 0.2582\*NumberOfClaims - 0.2323\*NumOfEmails - 0.3411\*NumberOfCalls
+
+***Lapse forecasting by model***
+
+The predictive model in study 2 forecasting 146 Lapses representing of 10.9% and 1195 No-Lapses representing 89.1%; accuracy of this predicting model is 0.7271 with 95% CI(0.7071, 0,7508).
+
+```{r echo=FALSE}
+
+threshold=0.5
+predicted_values<-ifelse(predict(search2 ,type="response")>threshold,1,0)
+actual_values<-search2$y
+conf_matrix<-table(predicted_values,actual_values)
+#conf_matrix
+
+#Code-Sensitivity and Specificity
+library(caret)
+#sensitivity(conf_matrix)
+#specificity(conf_matrix)
+
+#conf0<-confusionMatrix(as.factor(predicted_values),as.factor(actual_values))
+conf1<-confusionMatrix(as.factor(predicted_values),as.factor(actual_values), positive="1")
+conf1
+
+```
+
+***Interpreting Odds and Probability***
+
++-----------------+---------------+---------------+---------------+
+|                 | Odds ratios   | CI 95%        | for Diff.     |
++=================+:=============:+:=============:+==============:+
+| NumOfReinstated | 1.763         | 1.567 - 1.985 | 1             |
++-----------------+---------------+---------------+---------------+
+| NumOfClainms    | 1.295         | 1.149 - 1.459 | 1             |
++-----------------+---------------+---------------+---------------+
+| NumOfEmails     | 0.792         | 0.696 - 0.903 | 1             |
++-----------------+---------------+---------------+---------------+
+| NumOfCalls      | 0.505         | 0.392 - 0.651 | 2             |
++-----------------+---------------+---------------+---------------+
+
+Given others variables constant,
+
+-   For each unit increase of *Reinstated*, Odds ratio (OR) of probability P increase 1.763 or *predicting* Odds(P) increase by 76.3%.
+-   For each unit increase of *Claim*, Odds ratio (OR) of probability P increase 1.295 or *predicting* Odds(P) increase by 29.5%.
+-   For each unit increase of *Email*, *predicting* Odds(P) decrease by 20.7%
+-   For each unit increase of *Call*, *predicting* Odds(P) decrease by 28.9%
+
+## Study findings
+
+From the observed information of insured, the predictive model in study 1 forecasts more accuracy with 82.23% (versus 72.21%) and more discriminated with C-value of 0.805.
+
+Among True Positive Lapse (predicted Lapse=observed Lapse), it was found that 212 Lapse policy (\~88.7%) with Occupation in Group 1 and 2, 222 policies (\~92.9%) has Coverage period in Group 2 and 3, and 89.5% lapse policies with premium over \$2,000.
+
+The model **Logit(P) = -3.1110 - 0.1869\*Occupation - 0.00013\*Premium + 0.5101\*CoveragePeriod** predict 281 lapse cases, accounting for 20.85%. Ability to accurate forecast of 82.33%.
+
+The model **Logit(P) = -0.6385 + 0.5673\*NumOfReinstated + 0.2582\*NumberOfClaims - 0.2323\*NumOfEmails - 0.3411\*NumberOfCalls** predict 146 lapse cases, accounting for 10.9% total policies. This model show that increasing Number of Reinstatement and Claims can increase the possibility of Lapse; but by increasing interaction to customer, we expect to reduce the possibility of insured to terminate their policy.
+
+# Annex
+
+***Table Appendix 1:*** General information of the insured
+
+```{r, echo=FALSE}
+
+Col=c("Lapse","PO_Sex","Occupation","Premium","CoveragePeriod","PaymentTerm","NumOfReinstated","NumOfClaims","NumOfEmails","NumOfCalls")
+dd=dat[,Col]
+
+dd$Lapse = as.factor(dd$Lapse)
+dd$Occupation <- as.ordered(dd$Occupation)
+dd$CoveragePeriod <- as.ordered(dd$CoveragePeriod)
+dd$PaymentTerm <- as.ordered(dd$PaymentTerm)
+dd$NumOfReinstated <- as.ordered(dd$NumOfReinstated)
+dd$NumOfClaims <- as.ordered(dd$NumOfClaims)
+dd$Premium <-gsub (",","",dd$Premium) %>%
+  as.numeric()
+
+tb= table1 (~ PO_Sex + Occupation + Premium + CoveragePeriod + PaymentTerm + NumOfReinstated + NumOfClaims + NumOfEmails + NumOfCalls | Lapse , data=dd)
+
+flxtb =t1flex(tb)
+flxtb
+
+#table1 (~ PO_Sex + Occupation + Premium + CoveragePeriod + PaymentTerm + NumOfReinstated + NumOfClaims  | Lapse , data=dd)
+
+```
