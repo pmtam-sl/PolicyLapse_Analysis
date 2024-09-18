@@ -13,7 +13,7 @@
 archive/
 
 # Knit_folder
-knit_folder
+knit_folder/
 
 # User-specific files
 .Ruserdata
