@@ -16,7 +16,7 @@ This project aims to explore factors contributing to policy lapses and predict t
 
 ### Part 3: Policy Lapse Prediction using TidyMode
 - **Objective**: Build predictive models to forecast the likelihood of a policy lapse.
-- **Method**: Use TidyMode, a tidy approach to machine learning in R, to fit and evaluate models for predicting policy lapses.
+- **Method**: Use `tidymodels`, a tidy approach to machine learning in R, to fit and evaluate models for predicting policy lapses.
 
 ## Repository Structure
 
@@ -24,7 +24,9 @@ This project aims to explore factors contributing to policy lapses and predict t
 - `code.rmd/`: Includes RMarkdown scripts for each part of the analysis.
   - `PolicyLapse_LR.Rmd`: Rmd for logistic regression analysis.
   - `PolicyLapse_EDA.Rmd`: Rmd for Exploratory Data Analysis.
-  - `PolicyLapse_Prediction.Rmd`: Code for building predictive models using TidyMode.
+  - `PolicyLapse_Prediction.Rmd`: Code for building predictive models using `tidymodels`.
 - `reports/`: Includes HTML generated reports for each part of the analysis
 - `README.md`: This file.
+
+
 
